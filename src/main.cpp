@@ -24,6 +24,11 @@ const int LEFT_INDICATOR_PIN = 2;
 const int RIGHT_INDICATOR_PIN = 8;
 const int PARTY_PIN = 7;
 
+void setLeds(CRGB* leds, int num, CRGB color){
+  for (int i = 0; i < num; i++){
+    leds[i] = color;
+  }
+}
 
 typedef void (*callback)(void);
 typedef void (*updateFunk)(void);
@@ -152,6 +157,82 @@ LedFlasher rightFlasher(RIGHT_LED_PIN);
 LedFlasher leftFlasher(LEFT_LED_PIN);
 LedFlasher partyFlasher(PARTY_LED_INDICATOR_PIN);
 
+class FastLEDPulser
+{
+public:
+
+  bool on = false;
+  uint8_t period = 1;
+  CRGB *leds;
+  uint8_t num;
+  CHSV baseColor;
+  uint8_t clampUpper = 255;
+  uint8_t clampLower = 0;
+
+
+  FastLEDPulser(
+    CRGB *leds, 
+    uint8_t num, 
+    CHSV baseColor, 
+    uint8_t period = 1
+    );
+  bool IsOn();
+  void ToggleState();
+  void TurnOn();
+  void TurnOff();
+  void Update();
+  void Change(bool state);
+};
+
+FastLEDPulser::FastLEDPulser(CRGB *leds, uint8_t num, CHSV baseColor, uint8_t period = 1)
+{
+  this->leds = leds;
+  this->num = num;
+  this->period = period;
+  this->baseColor = baseColor;
+}
+
+bool FastLEDPulser::IsOn() {
+  return this->on;
+}
+
+void FastLEDPulser::ToggleState() {
+  if (this->IsOn()) {
+    this->TurnOff();
+  } else {
+    this->TurnOn();
+  }
+}
+
+void FastLEDPulser::TurnOff() {
+  this->on = false;
+  setLeds(this->leds, this->num, CRGB::Black);
+}
+
+void FastLEDPulser::TurnOn() {
+  this->on = true;
+}
+
+void FastLEDPulser::Update() {
+  if (this->IsOn()) {
+    uint8_t val = cubicwave8(millis() / this->period);
+    CHSV color(this->baseColor.h, this->baseColor.s, val);
+    setLeds(this->leds, this->num, color);
+  }
+}
+
+void FastLEDPulser::Change(bool state) {
+  if (state) {
+    this->TurnOn();
+  } else {
+    this->TurnOff();
+  }
+}
+
+FastLEDPulser backPulser(back, NUM_LED_BACK, CHSV(0, 255, 0), 2);
+FastLEDPulser leftPulser(left, NUM_LED_LEFT, CHSV(40, 255, 0), 2);
+FastLEDPulser rightPulser(right, NUM_LED_RIGHT, CHSV(40, 255, 0), 2);
+
 struct BikeState
 {
   bool leftIndicating = false;
@@ -163,10 +244,6 @@ struct BikeState
 };
 
 BikeState state;
-
-// temp
-bool ledOn;
-bool change;
 
 int ticks = 0;
 CHSV backColor = CHSV(0, 244, 244);
@@ -187,33 +264,18 @@ void partyIndicatorClick() {
   state.partying = !state.partying;
 }
 
-void setLeds(CRGB* leds, int num, CRGB color){
-  for (int i = 0; i < num; i++){
-    leds[i] = color;
-  }
-}
-
 
 void setup() {
-  // Setup all our pins:
-  // pinMode(LEFT_INDICATOR_PIN, INPUT);
-  // pinMode(RIGHT_INDICATOR_PIN, INPUT);
-  // pinMode(PARTY_PIN, INPUT);
-
-  // pinMode(LEFT_LED_PIN, OUTPUT); 
-  // pinMode(RIGHT_LED_PIN, OUTPUT); 
-  // pinMode(PARTY_LED_INDICATOR_PIN, OUTPUT); 
-
-  // digitalWrite(LEFT_LED_PIN, HIGH);
-  // digitalWrite(RIGHT_LED_PIN, HIGH);
-  // digitalWrite(PARTY_LED_INDICATOR_PIN, HIGH);
 
   FastLED.addLeds<NEOPIXEL, BACK_LED_PIN>(backLeds, TOT_NUM_LED_BACK);
   FastLED.addLeds<NEOPIXEL, PARTY_LED_PIN>(partyLeds, NUM_LED_PARTY);
 
   // set the back leds to red
-  setLeds(back, NUM_LED_BACK, backColor);
+  backPulser.TurnOn();
   FastLED.show();
+
+  // Set the party LEDs to purple
+  setLeds(partyLeds, NUM_LED_PARTY, CRGB::Purple);
 
   // attach callbacks
   leftButton.AttachClick(leftIndicatorClick);
@@ -221,6 +283,8 @@ void setup() {
   partyButton.AttachClick(partyIndicatorClick);
 }
 
+uint8_t fadeAmount = 5;
+uint8_t brightness = 0;
 void loop() {
   leftButton.Update();
   rightButton.Update();
@@ -230,50 +294,24 @@ void loop() {
   rightFlasher.update();
   partyFlasher.update();
 
-  // testing code for left button (pin 4)
-  // int leftReading = digitalRead(2);
-
-  // if (leftReading != lastLeftButtonState) {
-  //   // reset the debouncing timer
-  //   lastDebounceTime = millis();
-  // }
-
-  // if ((millis() - lastDebounceTime) > debounceDelay) {
-  //   if (leftReading != leftButtonState) {
-  //     leftButtonState = leftReading;
-
-  //     if (leftButtonState == HIGH) {
-  //       change = true;
-  //     }
-  //   }
-  // }
-  // lastLeftButtonState = leftReading;
-
-  // TODO this will be party mode
-  if (change) {
-    CRGB color;
-    color.setHSV(random8(), random8(), random8());
-    setLeds(backLeds, TOT_NUM_LED_BACK, color);
-    FastLED.show();
-    change = false;
-  }
+  backPulser.Update();
+  leftPulser.Update();
+  rightPulser.Update();
 
   if (state.changing) {
     // we just do all the changes, slightly inefficient but whatevs
 
     Serial.println("changing!");
-    // TODO these should actually flash
-    // digitalWrite(LEFT_LED_PIN, state.leftIndicating);
-    // digitalWrite(RIGHT_LED_PIN, state.rightIndicating);
-    // digitalWrite(PARTY_LED_INDICATOR_PIN, state.partying);
 
     leftFlasher.change(state.leftIndicating);
     rightFlasher.change(state.rightIndicating);
     partyFlasher.change(state.partying);
 
+    leftPulser.Change(state.leftIndicating);
+    rightPulser.Change(state.rightIndicating);
+
     state.changing = false;
   }
 
-  // Always flash the back leds
-
+  FastLED.show();
 }

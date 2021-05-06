@@ -233,6 +233,27 @@ FastLEDPulser backPulser(back, NUM_LED_BACK, CHSV(0, 255, 0), 2);
 FastLEDPulser leftPulser(left, NUM_LED_LEFT, CHSV(40, 255, 0), 2);
 FastLEDPulser rightPulser(right, NUM_LED_RIGHT, CHSV(40, 255, 0), 2);
 
+// being lazy here, I know this is for the party lights
+struct PartyState {
+  uint8_t period = 3;
+  bool on = false;
+};
+
+PartyState partyState;
+
+void UpdateParty() {
+  // DUAL PHASE
+  if (partyState.on) {
+      uint8_t val1 = cubicwave8(millis() / partyState.period);
+      uint8_t val2 = cubicwave8((millis() + 122) / partyState.period);
+
+
+      for (uint8_t i = 0; i < NUM_LED_PARTY; i++) {
+        partyLeds[i] = CHSV(192, 255, i % 2 == 0 ? val1 : val2);
+      }
+    }
+}
+
 struct BikeState
 {
   bool leftIndicating = false;
@@ -274,9 +295,6 @@ void setup() {
   backPulser.TurnOn();
   FastLED.show();
 
-  // Set the party LEDs to purple
-  setLeds(partyLeds, NUM_LED_PARTY, CRGB::Purple);
-
   // attach callbacks
   leftButton.AttachClick(leftIndicatorClick);
   rightButton.AttachClick(rightIndicatorClick);
@@ -298,6 +316,8 @@ void loop() {
   leftPulser.Update();
   rightPulser.Update();
 
+  UpdateParty();
+
   if (state.changing) {
     // we just do all the changes, slightly inefficient but whatevs
 
@@ -309,6 +329,11 @@ void loop() {
 
     leftPulser.Change(state.leftIndicating);
     rightPulser.Change(state.rightIndicating);
+
+    partyState.on = state.partying;
+    if (!state.partying) {
+      setLeds(partyLeds, NUM_LED_PARTY, CRGB::Black);
+    }
 
     state.changing = false;
   }
